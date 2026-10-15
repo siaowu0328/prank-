@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>永遠點不到的惡作劇遊戲</title>
+    <!-- 引入 Tailwind CSS 進行現代化視覺樣式規劃 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            touch-action: manipulation;
+            overflow: hidden; /* 防止按鈕跑到邊緣產生滾動條 */
+        }
+
+        /* 漸變背景動畫 */
+        .bg-animated {
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+
+        /* 按鈕基本樣式與光影 */
+        .prank-btn {
+            user-select: none;
+            -webkit-user-select: none;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4), 0 8px 10px -6px rgba(99, 102, 241, 0.4);
+            will-change: transform, top, left;
+        }
+
+        /* 階段 4 BOSS 按鈕滑動動畫 (平滑移動) */
+        .smooth-dodge {
+            transition: top 0.22s cubic-bezier(0.25, 1, 0.5, 1), left 0.22s cubic-bezier(0.25, 1, 0.5, 1) !important;
+        }
+
+        /* 縮小按鈕特效 */
+        .shrink-btn {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 按鈕彈跳出現動畫 */
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .pop-in {
+            animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen w-screen flex items-center justify-center relative select-none">
+
+    <!-- 背景裝飾網格與光點 -->
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-40"></div>
+    
+    <!-- 遊戲資訊標題 / 計數器 -->
+    <div class="absolute top-6 left-1/2 -translate-x-1/2 text-center pointer-events-none z-10">
+        <h1 class="text-4xl md:text-5xl font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">
+    😈 你點得到嗎
+    </h1>
+        <p id="statusHint" class="text-xs md:text-sm text-slate-400 mt-1 font-medium">
+            你能順利點到按鈕嗎？試試看你的手速！
+        </p>
+    </div>
+
+    <!-- 階段 1 & 4 遊戲主要按鈕 -->
+    <button id="gameBtn" class="prank-btn absolute px-8 py-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 text-white font-black text-lg md:text-xl rounded-2xl shadow-2xl transition-colors cursor-pointer border border-white/20 z-20">
+        點擊開始遊戲
+    </button>
+
+    <!-- 彈窗 A & B & 最終勝利用 模態框 -->
+    <div id="modalOverlay" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center p-4 z-50 pop-in">
+        <div id="modalCard" class="bg-slate-800/90 border border-slate-700/80 rounded-3xl p-6 md:p-8 max-w-sm w-full text-center shadow-2xl relative overflow-hidden">
+            <!-- 裝飾背景光芒 -->
+            <div class="absolute -top-12 -left-12 w-24 h-24 bg-purple-500/20 rounded-full blur-xl"></div>
+            <div class="absolute -bottom-12 -right-12 w-24 h-24 bg-pink-500/20 rounded-full blur-xl"></div>
+
+            <!-- 彈窗內容標題與圖示 -->
+            <div id="modalIcon" class="text-5xl mb-4">🤣</div>
+            <h2 id="modalText" class="text-xl md:text-2xl font-bold text-slate-100 mb-6 leading-relaxed">
+                哈哈哈！你永遠也點不到的！！
+            </h2>
+
+            <!-- 彈窗內部按鈕 container -->
+            <div class="flex justify-center items-center min-h-[60px]">
+                <button id="modalBtn" class="shrink-btn px-6 py-3 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-bold rounded-xl shadow-lg border border-white/10 active:scale-95">
+                    關閉遊戲
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 遊戲狀態變數 ---
+        let stage = 1;               // 遊戲階段：1(初始/轉移按鈕), 2(彈窗A), 3(縮小按鈕/彈窗B), 4(Boss懸停逃跑), 5(勝利)
+        let stage1Clicks = 0;        // 階段一按鈕點擊計數
+        let shrinkClicks = 0;        // 階段三按鈕縮小點擊計數
+
+        // --- DOM 元素引用 ---
+        const gameBtn = document.getElementById('gameBtn');
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalCard = document.getElementById('modalCard');
+        const modalIcon = document.getElementById('modalIcon');
+        const modalText = document.getElementById('modalText');
+        const modalBtn = document.getElementById('modalBtn');
+        const statusHint = document.getElementById('statusHint');
+
+        // --- 輔助函式：計算螢幕內不超出邊界的隨機座標 ---
+        function getRandomPosition(element) {
+            const padding = 20;
+            const rect = element.getBoundingClientRect();
+            const btnWidth = rect.width || 180;
+            const btnHeight = rect.height || 60;
+
+            const maxX = Math.max(padding, window.innerWidth - btnWidth - padding);
+            const maxY = Math.max(padding, window.innerHeight - btnHeight - padding);
+
+            const x = Math.floor(padding + Math.random() * (maxX - padding));
+            const y = Math.floor(padding + Math.random() * (maxY - padding));
+
+            return { x, y };
+        }
+
+        // --- 輔助函式：置中元素 ---
+        function centerElement(element) {
+            const rect = element.getBoundingClientRect();
+            const x = (window.innerWidth - rect.width) / 2;
+            const y = (window.innerHeight - rect.height) / 2;
+            element.style.left = `${x}px`;
+            element.style.top = `${y}px`;
+        }
+
+        // --- 遊戲重置 / 初始化 ---
+        function initGame() {
+            stage = 1;
+            stage1Clicks = 0;
+            shrinkClicks = 0;
+            
+            modalOverlay.classList.add('hidden');
+            
+            statusHint.innerText = "你能順利點到按鈕嗎？試試看你的手速！";
+            gameBtn.innerText = "點擊開始遊戲";
+            gameBtn.className = "prank-btn absolute px-8 py-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:to-pink-600 text-white font-black text-lg md:text-xl rounded-2xl shadow-2xl transition-colors cursor-pointer border border-white/20 z-20";
+            gameBtn.style.display = "block";
+            
+            // 放到畫面中央
+            setTimeout(() => {
+                centerElement(gameBtn);
+            }, 50);
+        }
+
+        // 頁面初次載入置中按鈕
+        window.addEventListener('load', initGame);
+
+        // --- 瞬間移動遊戲主按鈕 (全螢幕隨機，適用於階段 1) ---
+        function teleportGameBtn() {
+            gameBtn.classList.remove('smooth-dodge');
+            const pos = getRandomPosition(gameBtn);
+            gameBtn.style.left = `${pos.x}px`;
+            gameBtn.style.top = `${pos.y}px`;
+        }
+
+        // --- 階段 4 BOSS 戰：智慧防關死角閃避演算法 ---
+        function dodgeNearCursor(cursorX, cursorY) {
+            gameBtn.classList.add('smooth-dodge');
+            const rect = gameBtn.getBoundingClientRect();
+            const padding = 30;
+
+            const btnCenterX = rect.left + rect.width / 2;
+            const btnCenterY = rect.top + rect.height / 2;
+
+            // 計算鼠標相對按鈕的方向向量
+            let dx = btnCenterX - (cursorX || btnCenterX);
+            let dy = btnCenterY - (cursorY || btnCenterY);
+
+            // 當距離過近時計算基礎逃跑角度
+            let escapeAngle = Math.atan2(dy, dx);
+
+            // 逃跑距離 
+            const jumpDistance = 50 + Math.random() * 30;
+
+            // 計算預測座標
+            let targetX = rect.left + Math.cos(escapeAngle) * jumpDistance;
+            let targetY = rect.top + Math.sin(escapeAngle) * jumpDistance;
+
+            const maxX = window.innerWidth - rect.width - padding;
+            const maxY = window.innerHeight - rect.height - padding;
+
+            // 💡 智慧防角落機制：如果算出來的方向會撞牆/掉出邊界，自動改變角度（往中央或沿牆壁溜走）
+            if (targetX < padding || targetX > maxX || targetY < padding || targetY > maxY) {
+                // 如果靠邊界太近，強制轉向畫面中央的方向逃跑
+                const screenCenterX = window.innerWidth / 2;
+                const screenCenterY = window.innerHeight / 2;
+                
+                const angleToCenter = Math.atan2(screenCenterY - btnCenterY, screenCenterX - btnCenterX);
+                
+                // 加上一點隨機偏移角度 (-45度 ~ +45度) 增加隨機感
+                const randomOffset = (Math.random() - 0.5) * (Math.PI / 2);
+                const finalAngle = angleToCenter + randomOffset;
+
+                targetX = rect.left + Math.cos(finalAngle) * jumpDistance;
+                targetY = rect.top + Math.sin(finalAngle) * jumpDistance;
+            }
+
+            // 最終安全座標約束
+            targetX = Math.max(padding, Math.min(maxX, targetX));
+            targetY = Math.max(padding, Math.min(maxY, targetY));
+
+            gameBtn.style.left = `${targetX}px`;
+            gameBtn.style.top = `${targetY}px`;
+        }
+
+        // --- 階段 1 與 階段 4 的主按鈕點擊事件 ---
+        gameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+
+            if (stage === 1) {
+                stage1Clicks++;
+                if (stage1Clicks === 1 || stage1Clicks === 2) {
+                    // 第 1, 2 次點擊：按鈕瞬間轉移
+                    teleportGameBtn();
+                    statusHint.innerText = `欸？跑掉了！(已點擊 ${stage1Clicks}/3 次)`;
+                } else if (stage1Clicks >= 3) {
+                    // 第 3 次點擊：隱藏主按鈕並觸發彈窗 A
+                    gameBtn.style.display = "none";
+                    showModalA();
+                }
+            } else if (stage === 4) {
+                // 階段 4：玩家成功點擊到「我跑！！！」，遊戲通關！
+                triggerVictory();
+            }
+        });
+
+        // --- 階段 4 Boss 戰：鼠標接近/懸停時順暢閃避逃跑 ---
+        function handleBossEscape(e) {
+            if (stage === 4) {
+                e.preventDefault();
+                let clientX = e.clientX;
+                let clientY = e.clientY;
+
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                }
+
+                dodgeNearCursor(clientX, clientY);
+            }
+        }
+
+        // 監聽 mouseenter, touchstart 實現即時閃避
+        gameBtn.addEventListener('mouseenter', handleBossEscape);
+        gameBtn.addEventListener('touchstart', handleBossEscape, { passive: false });
+
+        // 全螢幕滑鼠接近偵測，當滑鼠快碰到的時候就順暢溜走
+        document.addEventListener('mousemove', (e) => {
+            if (stage === 4 && gameBtn.style.display !== 'none') {
+                const rect = gameBtn.getBoundingClientRect();
+                const btnCenterX = rect.left + rect.width / 2;
+                const btnCenterY = rect.top + rect.height / 2;
+                
+                // 計算滑鼠與按鈕中心距離
+                const dist = Math.hypot(e.clientX - btnCenterX, e.clientY - btnCenterY);
+                
+                // 當距離小於 100px 時觸發滑動逃跑
+                if (dist < 100) {
+                    dodgeNearCursor(e.clientX, e.clientY);
+                }
+            }
+        });
+
+        // --- 顯示彈窗 A ---
+        function showModalA() {
+            stage = 2;
+            modalIcon.innerText = "🤪";
+            modalText.innerText = "哈哈哈！你永遠也點不到的！！";
+            modalBtn.innerText = "關閉遊戲";
+            modalBtn.className = "shrink-btn px-6 py-3 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-bold rounded-xl shadow-lg border border-white/10 active:scale-95";
+            modalOverlay.classList.remove('hidden');
+        }
+
+        // --- 顯示彈窗 B (進入縮小按鈕挑戰) ---
+        function showModalB() {
+            stage = 3;
+            shrinkClicks = 0;
+            modalIcon.innerText = "😡";
+            modalText.innerText = "太過分了居然要把我關掉";
+            modalBtn.innerText = "關閉遊戲";
+            modalOverlay.classList.remove('hidden');
+        }
+
+        // --- 彈窗按鈕點擊邏輯 ---
+        modalBtn.addEventListener('click', () => {
+            if (stage === 2) {
+                // 彈窗 A 點擊「關閉遊戲」 -> 切換至彈窗 B
+                showModalB();
+            } else if (stage === 3) {
+                // 彈窗 B：點擊縮小按鈕挑戰
+                shrinkClicks++;
+                
+                if (shrinkClicks < 5) {
+                    // 每次點擊縮小按鈕
+                    const newScale = 1 - (shrinkClicks * 0.18);
+                    modalBtn.style.transform = `scale(${newScale})`;
+                    statusHint.innerText = `按鈕縮小中... (已點擊 ${shrinkClicks}/5 次)`;
+                } else {
+                    // 點擊滿 5 次：關閉彈窗 B，進入階段 4 BOSS 戰
+                    modalOverlay.classList.add('hidden');
+                    startBossStage();
+                }
+            } else if (stage === 5) {
+                // 勝利彈窗：點擊「再試一次」重置遊戲
+                initGame();
+            }
+        });
+
+        // --- 啟動階段 4：Boss 戰【我跑！！！】 ---
+        function startBossStage() {
+            stage = 4;
+            statusHint.innerText = "終極挑戰：試著點到【我跑！！！】按鈕吧！";
+            
+            // 恢復按鈕文字與全尺寸樣式
+            gameBtn.innerText = "我跑！！！";
+            gameBtn.className = "prank-btn smooth-dodge absolute px-8 py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:from-amber-600 hover:to-red-600 text-white font-black text-xl md:text-2xl rounded-2xl shadow-2xl cursor-pointer border border-white/30 z-20 pop-in";
+            gameBtn.style.display = "block";
+            
+            // 隨機生成初始位置
+            teleportGameBtn();
+        }
+
+        // --- 通關勝利彈窗 ---
+        function triggerVictory() {
+            stage = 5;
+            gameBtn.style.display = "none";
+            gameBtn.classList.remove('smooth-dodge');
+            
+            modalIcon.innerText = "🎉";
+            modalText.innerText = "好吧，你贏了！";
+            modalBtn.innerText = "再試一次";
+            modalBtn.style.transform = "scale(1)";
+            modalBtn.className = "px-8 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-lg rounded-xl shadow-lg border border-white/20 active:scale-95";
+            
+            statusHint.innerText = "恭喜你通關！";
+            modalOverlay.classList.remove('hidden');
+        }
+
+        // --- 視窗大小改變時自動重新修正座標，防止按鈕掉出螢幕外部 ---
+        window.addEventListener('resize', () => {
+            if (stage === 1 && stage1Clicks === 0) {
+                centerElement(gameBtn);
+            } else if (gameBtn.style.display !== 'none') {
+                const rect = gameBtn.getBoundingClientRect();
+                if (rect.right > window.innerWidth || rect.bottom > window.innerHeight) {
+                    teleportGameBtn();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
